@@ -1,15 +1,9 @@
 use nom::branch::alt;
 use nom::bytes::streaming::{tag_no_case, take_till};
-use nom::lib::std::ops::Fn;
-use nom::{
-    alt,
-    bytes::complete::{tag, take_while_m_n},
-    combinator::map_res,
-    sequence::tuple,
-    IResult,
-};
+use nom::IResult;
 use std::convert::TryFrom;
 
+#[derive(PartialEq, Debug)]
 pub struct WindInfo {
     pub cardinal: String,
     pub azimuth: String,
@@ -17,6 +11,7 @@ pub struct WindInfo {
     pub knots: String,
 }
 
+#[derive(PartialEq, Debug)]
 pub struct WeatherInfo {
     pub station: Option<Station>,
     pub year: String,
