@@ -11,30 +11,28 @@ use nom::{
 use std::convert::TryFrom;
 
 pub struct WindInfo {
-    cardinal: String,
-    azimuth: String,
-    mph: String,
-    knots: String,
-    kmh: String,
-    ms: String,
+    pub cardinal: String,
+    pub azimuth: String,
+    pub mph: String,
+    pub knots: String,
 }
 
 pub struct WeatherInfo {
-    station: Option<Station>,
-    year: String,
-    month: String,
-    day: String,
-    hour: String,
-    windinfo: WindInfo,
-    visibility: String,
-    skyCondition: String,
-    weather: String,
-    temp_celsius: String,
-    temp_fahrenheit: String,
-    dewpoint_celsius: String,
-    dewpoint_fahrenheit: String,
-    humidity: i16,
-    pressure: i16,
+    pub station: Option<Station>,
+    pub year: String,
+    pub month: String,
+    pub day: String,
+    pub hour: String,
+    pub wind: WindInfo,
+    pub visibility: String,
+    pub sky_condition: String,
+    pub weather: String,
+    pub temp_celsius: String,
+    pub temp_fahrenheit: String,
+    pub dewpoint_celsius: String,
+    pub dewpoint_fahrenheit: String,
+    pub humidity: i16,
+    pub pressure: i16,
 }
 
 #[derive(PartialEq, Debug)]
@@ -86,13 +84,8 @@ pub fn parse_missing_station_name(i: &str) -> IResult<&str, Option<Station>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nom::{
-        error::{ErrorKind, VerboseError, VerboseErrorKind},
-        Err as NomErr,
-    };
-
     #[test]
-    fn test_scheme() {
+    fn test_station() {
         assert_eq!(
             parse_missing_station_name("Station name not available"),
             Ok(("", None))
@@ -103,7 +96,7 @@ mod tests {
         };
         assert_eq!(
             parse_missing_station_name("Qingdao, China (ZSQD) 36-04N 120-20E 77M\n"),
-            Ok(("dd", Some(station)))
+            Ok(("\n", Some(station)))
         );
     }
 }
