@@ -1,8 +1,16 @@
 use nom::branch::alt;
 use nom::bytes::streaming::{tag_no_case, take, take_till};
-use nom::Err::Error;
 use nom::IResult;
 use std::convert::TryFrom;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum DataStoreError {
+    #[error("Parsing failed for the item `{0}`")]
+    ParseError(String),
+}
+
+// todo: implement error handling
 
 #[derive(PartialEq, Debug)]
 pub struct WindInfo {
@@ -129,9 +137,15 @@ mod tests {
 
     #[test]
     fn test_time() {
+        let wtime = WeatherTime {
+            year: "2021".into(),
+            month: "03".into(),
+            day: "28".into(),
+            time: "0800 UTC".into(),
+        };
         assert_eq!(
             parse_time("Mar 28, 2021 - 04:00 AM EDT / 2021.03.28 0800 UTC"),
-            Ok(("", None))
+            Ok(("", Some(wtime)))
         );
     }
 }
