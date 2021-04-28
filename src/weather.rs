@@ -1,8 +1,10 @@
-use nom::branch::alt;
-use nom::bytes::streaming::{tag_no_case, take, take_till};
+use nom::{branch::alt, combinator::map_res};
+use nom::bytes::streaming::{tag_no_case, take_till};
+use nom::character::streaming::char;
 use nom::IResult;
-use std::convert::TryFrom;
+use std::{convert::TryFrom, str::FromStr};
 use thiserror::Error;
+use nom::error::*;
 
 #[derive(Error, Debug)]
 pub enum DataStoreError {
@@ -43,6 +45,14 @@ pub struct WeatherInfo {
 pub struct Station {
     place: String,
     country: String,
+}
+
+impl FromStr for Station {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        TryFrom::try_from(s)
+    }
 }
 
 impl TryFrom<&str> for Station {
@@ -87,12 +97,9 @@ pub fn parse_station(i: &str) -> IResult<&str, Option<Station>> {
 
 #[derive(PartialEq, Debug)]
 pub struct WeatherTime {
-    pub year: String,
-    pub month: String,
-    pub day: String,
-    // pub year: u16,
-    // pub month: u8,
-    // pub day: u8,
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
     pub time: String,
 }
 
@@ -100,23 +107,35 @@ pub fn parse_time(i: &str) -> IResult<&str, Option<WeatherTime>> {
     // Parsers a sample string like this
     // Mar 28, 2021 - 04:00 AM EDT / 2021.03.28 0800 UTC
     let (i, _) = take_till(|c| c == '/')(i)?;
-    let (i, _) = take(1usize)(i)?;
-    match i.trim().split('.').collect::<Vec<&str>>()[..] {
-        [ref y, ref m, ref d] => {
-            let mut time = d.split(' ').collect::<Vec<&str>>();
-            let day = time.remove(0);
-            return Ok((
-                i,
-                Some(WeatherTime {
-                    year: y.to_string(),
-                    month: m.to_string(),
-                    day: day.to_string(),
-                    time: time.join(" "),
-                }),
-            ));
-        }
-        _ => return Ok((i, None)),
-    }
+    let (i, _) = char('/')(i)?;
+    let (i, _) = char(' ')(i)?;
+    let (i, y) = map_res(
+        take_till(|c| c == '.'),
+        |s: &str| s.parse::<u16>(),
+    )(i)?;
+    let (i, _) = char('.')(i)?;
+    let (i, m) = map_res(
+        take_till(|c| c == '.'),
+        |s: &str| s.parse::<u8>(),
+    )(i)?;
+    let (i, _) = context(
+        "Trying to parse day",
+        char('.'),
+    )(i)?;
+    let (i, d) = map_res(
+        take_till(|c| c == ' '),
+        |s: &str| s.parse::<u8>(),
+    )(i)?;
+    let (time, _) = char(' ')(i)?;
+    Ok((
+        "",
+        Some(WeatherTime {
+            year: y,
+            month: m,
+            day: d,
+            time: time.to_owned(),
+        })
+    ))
 }
 
 #[cfg(test)]
@@ -138,9 +157,9 @@ mod tests {
     #[test]
     fn test_time() {
         let wtime = WeatherTime {
-            year: "2021".into(),
-            month: "03".into(),
-            day: "28".into(),
+            year: 2021,
+            month: 3,
+            day: 28,
             time: "0800 UTC".into(),
         };
         assert_eq!(
