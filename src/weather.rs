@@ -1,7 +1,9 @@
 use nom::{branch::alt, combinator::map_res};
+use nom::multi::many1;
 use nom::bytes::streaming::{tag_no_case, take_till};
 use nom::character::streaming::char;
 use nom::IResult;
+use nom::bytes::complete::tag;
 use std::{convert::TryFrom, str::FromStr};
 use thiserror::Error;
 use nom::error::*;
@@ -14,13 +16,6 @@ pub enum DataStoreError {
 
 // todo: implement error handling
 
-#[derive(PartialEq, Debug)]
-pub struct WindInfo {
-    pub cardinal: String,
-    pub azimuth: String,
-    pub mph: String,
-    pub knots: String,
-}
 
 #[derive(PartialEq, Debug)]
 pub struct WeatherInfo {
@@ -76,6 +71,30 @@ impl TryFrom<&str> for Station {
             _ => Err(format!("Failuer parsing {}", i)),
         }
     }
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct WindInfo {
+    pub cardinal: String,
+    pub azimuth: String,
+    pub mph: String,
+    pub knots: String,
+}
+
+impl Default for WindInfo {
+    fn default() -> Self {
+        WindInfo {
+            cardinal: "μ".into(),
+            azimuth: "μ".into(),
+            mph: "0".into(),
+            knots: "0".into()
+        }
+    }
+}
+
+pub fn parse_windinfo(i: &str) -> IResult<&str, WindInfo> {
+    let (i,_) = many1(tag("Wind: Calm:0"))(i)?;
+    Ok((i, WindInfo::default()))
 }
 
 pub fn parse_station(i: &str) -> IResult<&str, Option<Station>> {
@@ -167,4 +186,46 @@ mod tests {
             Ok(("", Some(wtime)))
         );
     }
+
+    #[test]
+    fn test_wind_info() {
+        let winfo = WindInfo {
+            cardinal: "μ".into(),
+            azimuth: "μ".into(),
+            mph: "0".into(),
+            knots: "0".into()
+        };
+        assert_eq!(
+            parse_windinfo("Wind: Calm:0"),
+            Ok(("", winfo.clone()))
+        );
+        assert!(
+            parse_windinfo("Wind: unexpected").is_err()
+        );
+    }
 }
+
+// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/VOBL.TXT
+// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/VOBL.xml
+// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/VOBL.json
+
+// With station names
+// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/ZSSS.TXT
+// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/ZSQD.TXT
+// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/ZSPD.TXT
+// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/YMML.TXT (aus)
+
+// Qingdao, China (ZSQD) 36-04N 120-20E 77M
+// Mar 28, 2021 - 04:00 AM EDT / 2021.03.28 0800 UTC
+// Wind: from the NNW (340 degrees) at 16 MPH (14 KT):0
+// Visibility: 1 mile(s):0
+// Sky conditions: overcast
+// Weather: widespread dust
+// Temperature: 64 F (18 C)
+// Dew Point: 42 F (6 C)
+// Relative Humidity: 45%
+// Pressure (altimeter): 29.65 in. Hg (1004 hPa)
+// ob: ZSQD 280800Z 34007MPS 2000 DU OVC020 18/06 Q1004 BECMG TL0930 3000
+// cycle: 8
+
+// Reimplementatin of https://github.com/jaor/xmobar/blob/master/src/Xmobar/Plugins/Monitors/Weather.hs
