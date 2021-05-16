@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["Sibi Prabakaran <sibi@psibi.in>"]
 readme = "README.md"
 repository = "https://github.com/psibi/rucredstash"
-authors = ["Sibi Prabakaran <sibi@psibi.in>"]
 license = "MIT"
 keywords = ["Weather", "NOAA"]
 edition = "2018"
