@@ -7,7 +7,7 @@ name of the station code which can be obtained from
 
 ## Usage
 
-``` shellsession
+``` rust
 use anyhow::Result;
 use weathernoaa::weather::*;
 
@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
 
 Running it will give this:
 
-```
+``` rust
 WeatherInfo {
  station: None,
   weather_time:
