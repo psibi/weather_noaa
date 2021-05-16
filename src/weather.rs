@@ -6,7 +6,6 @@ use nom::error::*;
 use nom::multi::{many0, many1};
 use nom::IResult;
 use nom::{branch::alt, combinator::map_res};
-use reqwest;
 use std::char;
 use std::{convert::TryFrom, str::FromStr};
 use thiserror::Error;
@@ -178,18 +177,15 @@ impl TryFrom<&str> for Station {
         match i.split(',').collect::<Vec<&str>>()[..] {
             [ref s1, ref s2] => {
                 let mut country = s2.to_string();
-                match country.split('(').collect::<Vec<&str>>()[..] {
-                    [ref c, ..] => {
-                        country = c.trim().to_string();
-                    }
-                    _ => {}
+                if let [ref c, ..] = country.split('(').collect::<Vec<&str>>()[..] {
+                    country = c.trim().to_string();
                 }
                 Ok(Station {
                     place: s1.to_string(),
                     country,
                 })
             }
-            _ => Err(format!("Failuer parsing {}", i)),
+            _ => Err(format!("Failure parsing {}", i)),
         }
     }
 }
@@ -250,9 +246,11 @@ fn parse_windinfo(i: &str) -> IResult<&str, WindInfo> {
         let (i, _) = tag(" MPH (")(i)?;
         let (i, knots) = take_till(char::is_whitespace)(i)?;
         let (i, _) = take_till(|c| c == '\n')(i)?;
-        let mut wind_info = WindInfo::default();
-        wind_info.mph = mph.into();
-        wind_info.knots = knots.into();
+        let wind_info = WindInfo {
+            knots: knots.into(),
+            mph: mph.into(),
+            ..WindInfo::default()
+        };
         Ok((i, wind_info))
     }
 
@@ -283,8 +281,8 @@ fn parse_temperature(i: &str) -> IResult<&str, Temperature> {
     let (i, celsius) = map_res(take_till(char::is_whitespace), |s: &str| s.parse())(i)?;
     let (i, _) = take_till(|c| c == '\n')(i)?;
     let temperature = Temperature {
-        fahrenheit: fahrenheit,
-        celsius: celsius,
+        fahrenheit,
+        celsius,
     };
     Ok((i, temperature))
 }
