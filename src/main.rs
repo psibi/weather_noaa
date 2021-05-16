@@ -1,13 +1,9 @@
-use reqwest;
+use weathernoaa::weather::*;
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> Result<(), reqwest::Error> {
-    let res =
-        reqwest::get("https://tgftp.nws.noaa.gov/data/observations/metar/decoded/VOBL.TXT").await?;
-
-    let body = res.text().await?;
-
-    println!("Body:\n\n{}", body);
-
+async fn main() -> Result<()> {
+    let result = get_weather("VOBL".into()).await?;
+    println!("{:?}",result);
     Ok(())
 }
