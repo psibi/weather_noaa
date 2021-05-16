@@ -1,36 +1,46 @@
-use nom::{branch::alt, combinator::map_res};
-use nom::multi::{many1, many0};
+use nom::bytes::complete::tag;
 use nom::bytes::complete::{tag_no_case, take_till};
 use nom::character::complete::space1;
 use nom::character::complete::{char, newline};
-use std::char;
+use nom::error::*;
+use nom::multi::{many0, many1};
 use nom::IResult;
-use nom::bytes::complete::tag;
+use nom::{branch::alt, combinator::map_res};
+use reqwest;
+use std::char;
 use std::{convert::TryFrom, str::FromStr};
 use thiserror::Error;
-use nom::error::*;
-use reqwest;
 
 #[derive(PartialEq, Debug)]
 pub struct WeatherInfo {
-    pub station: Option<Station>, //  done
-    pub weather_time: WeatherTime, // done
-    pub wind: WindInfo,            // done
-    pub visibility: String,        // after string
-    pub sky_condition: String,     // after string
-    pub weather: Option<String>,           // after string
-    pub temperature: Temperature, // done
-    pub dewpoint: Temperature,    // done
-    pub humidity: String,
-    pub pressure: i16,          // Pressure in Hectopascal Pressure Unit
+    /// Weather station code. More information about it is present in the [Station metadata page](https://www.ncdc.noaa.gov/data-access/land-based-station-data/station-metadata).
+    pub station: Option<Station>,
+    /// Timestamp of the weather
+    pub weather_time: WeatherTime,
+    /// Wind Information
+    pub wind: WindInfo,
+    /// Visibility Details. Eg: 1 mile(s):0
+    pub visibility: String,
+    /// Sky condition. Eg: overcast, partly cloudy etc.
+    pub sky_condition: String,
+    /// Weather information. Eg: widespread dust
+    pub weather: Option<String>,
+    /// Temperature
+    pub temperature: Temperature,
+    /// Dewpoint Temperature. More details [here](https://en.wikipedia.org/wiki/Dew_point)
+    pub dewpoint: Temperature,
+    /// Relative Humidity. More details [here](https://en.wikipedia.org/wiki/Humidity#Relative_humidity)
+    pub relative_humidity: String,
+    /// Pressure in Hectopascal Pressure Unit
+    pub pressure: i16,
 }
 
 #[derive(Error, Debug)]
 pub enum WeatherError {
-    #[error("data store disconnected")]
+    #[error("Error from request: `{0}`")]
     ReqwestError(reqwest::Error),
     #[error("Error from Nom: `{0}`")]
-    NomError(String)
+    NomError(nom::Err<nom::error::Error<String>>),
 }
 
 impl From<reqwest::Error> for WeatherError {
@@ -39,40 +49,32 @@ impl From<reqwest::Error> for WeatherError {
     }
 }
 
-impl From<nom::error::Error<&str>> for WeatherError {
-    fn from(error: nom::error::Error<&str>) -> Self {
-        WeatherError::NomError(error.to_string())
-    }
-}
-
 impl From<nom::Err<nom::error::Error<&str>>> for WeatherError {
     fn from(error: nom::Err<nom::error::Error<&str>>) -> Self {
-        let str: String = format!("{}", error);
-        WeatherError::NomError(str)
+        WeatherError::NomError(error.map(|e| nom::error::Error::new(e.input.to_string(), e.code)))
     }
 }
-
 
 fn parse_weather_str(i: &str) -> IResult<&str, Option<String>> {
     let (i, k) = many0(tag("Weather: "))(i)?;
     if k.is_empty() {
-        return Ok((i, None))
+        return Ok((i, None));
     }
     let (i, weather) = take_till(|c| c == '\n')(i)?;
-    let (i,_) = newline(i)?;
+    let (i, _) = newline(i)?;
     Ok((i, Some(weather.into())))
 }
 
-
 pub async fn get_weather(station_code: String) -> Result<WeatherInfo, WeatherError> {
-    let noaa_url = format!("https://tgftp.nws.noaa.gov/data/observations/metar/decoded/{}.TXT", station_code);
-    let res =
-        reqwest::get(noaa_url).await?;
+    let noaa_url = format!(
+        "https://tgftp.nws.noaa.gov/data/observations/metar/decoded/{}.TXT",
+        station_code
+    );
+    let res = reqwest::get(noaa_url).await?;
     let body = res.text().await?;
     let (_, result) = parse_weather(&body)?;
     Ok(result)
 }
-
 
 pub fn parse_weather(i: &str) -> IResult<&str, WeatherInfo> {
     let (i, station) = parse_station(i)?;
@@ -107,13 +109,11 @@ pub fn parse_weather(i: &str) -> IResult<&str, WeatherInfo> {
         weather,
         temperature,
         dewpoint,
-        humidity: humidity.into(),
-        pressure
+        relative_humidity: humidity.into(),
+        pressure,
     };
     Ok((i, winfo))
 }
-
-
 
 #[derive(PartialEq, Debug)]
 pub struct Temperature {
@@ -172,7 +172,7 @@ impl Default for WindInfo {
             cardinal: "μ".into(),
             azimuth: "μ".into(),
             mph: "0".into(),
-            knots: "0".into()
+            knots: "0".into(),
         }
     }
 }
@@ -185,15 +185,14 @@ fn parse_pressure(input: &str) -> IResult<&str, i16> {
     let (i, _) = tag("Pressure (altimeter): ")(input)?;
     let (i, _) = take_till(|c| c == '(')(i)?;
     let (i, _) = char('(')(i)?;
-    let (i, pressure) = map_res(take_till(char::is_whitespace), |i:&str| i.parse())(i)?;
+    let (i, pressure) = map_res(take_till(char::is_whitespace), |i: &str| i.parse())(i)?;
     let (i, _) = take_till(|c| c == '\n')(i)?;
     Ok((i, pressure))
 }
 
 pub fn parse_windinfo(i: &str) -> IResult<&str, WindInfo> {
-
     fn calm_parser(i: &str) -> IResult<&str, WindInfo> {
-        let (i,_) = many1(tag("Wind: Calm:0"))(i)?;
+        let (i, _) = many1(tag("Wind: Calm:0"))(i)?;
         Ok((i, WindInfo::default()))
     }
 
@@ -212,7 +211,7 @@ pub fn parse_windinfo(i: &str) -> IResult<&str, WindInfo> {
             cardinal: cardinal.into(),
             azimuth: azimuth.into(),
             mph: mph.into(),
-            knots: knots.into()
+            knots: knots.into(),
         };
         Ok((i, wind_info))
     }
@@ -257,7 +256,7 @@ fn parse_temperature(i: &str) -> IResult<&str, Temperature> {
     let (i, _) = take_till(|c| c == '\n')(i)?;
     let temperature = Temperature {
         fahrenheit: fahrenheit,
-        celsius: celsius
+        celsius: celsius,
     };
     Ok((i, temperature))
 }
@@ -276,24 +275,12 @@ pub fn parse_time(i: &str) -> IResult<&str, WeatherTime> {
     let (i, _) = take_till(|c| c == '/')(i)?;
     let (i, _) = char('/')(i)?;
     let (i, _) = char(' ')(i)?;
-    let (i, y) = map_res(
-        take_till(|c| c == '.'),
-        |s: &str| s.parse::<u16>(),
-    )(i)?;
+    let (i, y) = map_res(take_till(|c| c == '.'), |s: &str| s.parse::<u16>())(i)?;
     let (i, _) = char('.')(i)?;
-    let (i, m) = map_res(
-        take_till(|c| c == '.'),
-        |s: &str| s.parse::<u8>(),
-    )(i)?;
-    let (i, _) = context(
-        "Trying to parse day",
-        char('.'),
-    )(i)?;
+    let (i, m) = map_res(take_till(|c| c == '.'), |s: &str| s.parse::<u8>())(i)?;
+    let (i, _) = context("Trying to parse day", char('.'))(i)?;
 
-    let (i, d) = map_res(
-        take_till(|c| c == ' '),
-        |s: &str| s.parse::<u8>(),
-    )(i)?;
+    let (i, d) = map_res(take_till(|c| c == ' '), |s: &str| s.parse::<u8>())(i)?;
     let (i, _) = char(' ')(i)?;
     let (i, time) = take_till(|c| c == '\n')(i)?;
     Ok((
@@ -303,7 +290,7 @@ pub fn parse_time(i: &str) -> IResult<&str, WeatherTime> {
             month: m,
             day: d,
             time: time.to_owned(),
-        }
+        },
     ))
 }
 
@@ -343,21 +330,16 @@ mod tests {
             cardinal: "μ".into(),
             azimuth: "μ".into(),
             mph: "0".into(),
-            knots: "0".into()
+            knots: "0".into(),
         };
-        assert_eq!(
-            parse_windinfo("Wind: Calm:0"),
-            Ok(("", winfo.clone()))
-        );
-        assert!(
-            parse_windinfo("Wind: unexpected").is_err()
-        );
+        assert_eq!(parse_windinfo("Wind: Calm:0"), Ok(("", winfo.clone())));
+        assert!(parse_windinfo("Wind: unexpected").is_err());
 
         let china_info = WindInfo {
             cardinal: "NNW".into(),
             azimuth: "340".into(),
             mph: "16".into(),
-            knots: "14".into()
+            knots: "14".into(),
         };
 
         assert_eq!(
@@ -370,22 +352,16 @@ mod tests {
     fn test_temperature() {
         let temp = Temperature {
             fahrenheit: 78,
-            celsius: 26
+            celsius: 26,
         };
-        assert_eq!(
-            parse_temperature(" 78 F (26 C)"),
-            Ok(("", temp))
-        );
+        assert_eq!(parse_temperature(" 78 F (26 C)"), Ok(("", temp)));
 
         let temp = Temperature {
             fahrenheit: 66,
-            celsius: 19
+            celsius: 19,
         };
 
-        assert_eq!(
-            parse_temperature(" 66 F (19 C)"),
-            Ok(("", temp))
-        );
+        assert_eq!(parse_temperature(" 66 F (19 C)"), Ok(("", temp)));
     }
 
     #[test]
@@ -414,12 +390,11 @@ mod tests {
         // );
     }
 
-
     #[test]
     fn retrieve_test_weather() {
         use tokio::runtime::Runtime;
         let rt = Runtime::new().unwrap();
-        let future = rt.block_on(async {get_weather("ZSQD".into()).await});
+        let future = rt.block_on(async { get_weather("ZSQD".into()).await });
         assert!(future.is_err());
     }
 
@@ -435,38 +410,36 @@ Dew Point: 66 F (19 C)
 Relative Humidity: 61%
 Pressure (altimeter): 29.80 in. Hg (1009 hPa)
 extra";
-        let winfo =  WeatherInfo {
+        let winfo = WeatherInfo {
             station: None,
             weather_time: WeatherTime {
                 year: 2021,
                 month: 5,
                 day: 16,
-                time: "1030 UTC".into()
+                time: "1030 UTC".into(),
             },
             wind: WindInfo {
                 cardinal: "SSW".into(),
                 azimuth: "200".into(),
                 mph: "12".into(),
-                knots: "10".into()
+                knots: "10".into(),
             },
             visibility: "4 mile(s):0".into(),
             sky_condition: "partly cloudy".into(),
             weather: None,
             temperature: Temperature {
                 fahrenheit: 80,
-                celsius: 27
+                celsius: 27,
             },
             dewpoint: Temperature {
                 fahrenheit: 66,
-                celsius: 19
+                celsius: 19,
             },
-            humidity: "61%".into(),
+            relative_humidity: "61%".into(),
             pressure: 1009,
         };
 
-        assert_eq!(parse_weather(weather),
-        Ok(("\nextra", winfo)));
-
+        assert_eq!(parse_weather(weather), Ok(("\nextra", winfo)));
     }
 
     #[test]
@@ -481,37 +454,39 @@ Temperature: 64 F (18 C)
 Dew Point: 42 F (6 C)
 Relative Humidity: 45%
 Pressure (altimeter): 29.65 in. Hg (1004 hPa)";
-        let winfo =  WeatherInfo {
-            station: Some( Station { place: "Qingdao".into(), country: "China".into()}),
+        let winfo = WeatherInfo {
+            station: Some(Station {
+                place: "Qingdao".into(),
+                country: "China".into(),
+            }),
             weather_time: WeatherTime {
                 year: 2021,
                 month: 3,
                 day: 28,
-                time: "0800 UTC".into()
+                time: "0800 UTC".into(),
             },
             wind: WindInfo {
                 cardinal: "NNW".into(),
                 azimuth: "340".into(),
                 mph: "16".into(),
-                knots: "14".into()
+                knots: "14".into(),
             },
             visibility: "1 mile(s):0".into(),
             sky_condition: "overcast".into(),
             weather: Some("widespread dust".into()),
             temperature: Temperature {
                 fahrenheit: 64,
-                celsius: 18
+                celsius: 18,
             },
             dewpoint: Temperature {
                 fahrenheit: 42,
-                celsius: 6
+                celsius: 6,
             },
-            humidity: "45%".into(),
+            relative_humidity: "45%".into(),
             pressure: 1004,
         };
 
-        assert_eq!(parse_weather(weather),
-        Ok(("", winfo)));
+        assert_eq!(parse_weather(weather), Ok(("", winfo)));
 
         let weather2 = "Qingdao, China (ZSQD) 36-04N 120-20E 77M
 Mar 28, 2021 - 04:00 AM EDT / 2021.03.28 0800 UTC
@@ -524,37 +499,39 @@ Dew Point: 42 F (6 C)
 Relative Humidity: 45%
 Pressure (altimeter): 29.65 in. Hg (1004 hPa)
 extra";
-        let winfo2 =  WeatherInfo {
-            station: Some( Station { place: "Qingdao".into(), country: "China".into()}),
+        let winfo2 = WeatherInfo {
+            station: Some(Station {
+                place: "Qingdao".into(),
+                country: "China".into(),
+            }),
             weather_time: WeatherTime {
                 year: 2021,
                 month: 3,
                 day: 28,
-                time: "0800 UTC".into()
+                time: "0800 UTC".into(),
             },
             wind: WindInfo {
                 cardinal: "NNW".into(),
                 azimuth: "340".into(),
                 mph: "16".into(),
-                knots: "14".into()
+                knots: "14".into(),
             },
             visibility: "1 mile(s):0".into(),
             sky_condition: "overcast".into(),
             weather: Some("widespread dust".into()),
             temperature: Temperature {
                 fahrenheit: 64,
-                celsius: 18
+                celsius: 18,
             },
             dewpoint: Temperature {
                 fahrenheit: 42,
-                celsius: 6
+                celsius: 6,
             },
-            humidity: "45%".into(),
+            relative_humidity: "45%".into(),
             pressure: 1004,
         };
 
-        assert_eq!(parse_weather(weather2),
-        Ok(("\nextra", winfo2)))
+        assert_eq!(parse_weather(weather2), Ok(("\nextra", winfo2)))
     }
 }
 
