@@ -397,15 +397,15 @@ mod tests {
             Ok(("", Some("light drizzle; partial fog".into())))
         );
 
-        // assert_eq!(
-        //     parse_weather_str(""),
-        //     Ok(("", None))
-        // );
+        assert_eq!(
+            parse_weather_str(""),
+            Ok(("", None))
+        );
 
-        // assert_eq!(
-        //     parse_weather_str("non_existent"),
-        //     Ok(("", None))
-        // );
+        assert_eq!(
+            parse_weather_str("non_existent"),
+            Ok(("", None))
+        );
     }
 
     #[test]
