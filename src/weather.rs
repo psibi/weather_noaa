@@ -11,6 +11,7 @@ use std::char;
 use std::{convert::TryFrom, str::FromStr};
 use thiserror::Error;
 
+/// Weather information for a particular station.
 #[derive(PartialEq, Debug)]
 pub struct WeatherInfo {
     /// Weather station code. More information about it is present in the [Station metadata page](https://www.ncdc.noaa.gov/data-access/land-based-station-data/station-metadata).
@@ -35,12 +36,53 @@ pub struct WeatherInfo {
     pub pressure: i16,
 }
 
+/// The timestamp of the weather data.
+#[derive(PartialEq, Debug)]
+pub struct WeatherTime {
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+    pub time: String,
+}
+
+/// Enum representing the various errors that the library can return.
 #[derive(Error, Debug)]
 pub enum WeatherError {
     #[error("Error from request: `{0}`")]
     ReqwestError(reqwest::Error),
     #[error("Error from Nom: `{0}`")]
     NomError(nom::Err<nom::error::Error<String>>),
+}
+
+/// Temperature in both celsius and Fahrenheit units.
+#[derive(PartialEq, Debug)]
+pub struct Temperature {
+    /// Temperature in celsius
+    pub celsius: i16,
+    /// Temperature in Fahrenheit
+    pub fahrenheit: i16,
+}
+
+/// Weather station information
+#[derive(PartialEq, Debug)]
+pub struct Station {
+    /// Station place
+    pub place: String,
+    /// Country where the station is located
+    pub country: String,
+}
+
+/// Wind Information
+#[derive(PartialEq, Debug, Clone)]
+pub struct WindInfo {
+    /// Cardinal direction. More details [here](https://en.wikipedia.org/wiki/Cardinal_direction)
+    pub cardinal: String,
+    /// Azimuth. More details [here](https://en.wikipedia.org/wiki/Azimuth#Navigation)
+    pub azimuth: String,
+    /// Wind speed in Miles per hour
+    pub mph: String,
+    /// Speed in knots. More details [here](https://en.wikipedia.org/wiki/Knot_(unit))
+    pub knots: String,
 }
 
 impl From<reqwest::Error> for WeatherError {
@@ -65,6 +107,8 @@ fn parse_weather_str(i: &str) -> IResult<&str, Option<String>> {
     Ok((i, Some(weather.into())))
 }
 
+/// This function retrieves the weather information from from the NOAA
+/// observations.
 pub async fn get_weather(station_code: String) -> Result<WeatherInfo, WeatherError> {
     let noaa_url = format!(
         "https://tgftp.nws.noaa.gov/data/observations/metar/decoded/{}.TXT",
@@ -76,6 +120,10 @@ pub async fn get_weather(station_code: String) -> Result<WeatherInfo, WeatherErr
     Ok(result)
 }
 
+// Implementation taken and adapted from
+// https://github.com/jaor/xmobar/blob/master/src/Xmobar/Plugins/Monitors/Weather.hs
+
+/// Nom parser for parsing `WeatherInfo` from raw data.
 pub fn parse_weather(i: &str) -> IResult<&str, WeatherInfo> {
     let (i, station) = parse_station(i)?;
     let (i, _) = newline(i)?;
@@ -115,18 +163,6 @@ pub fn parse_weather(i: &str) -> IResult<&str, WeatherInfo> {
     Ok((i, winfo))
 }
 
-#[derive(PartialEq, Debug)]
-pub struct Temperature {
-    celsius: i16,
-    fahrenheit: i16,
-}
-
-#[derive(PartialEq, Debug)]
-pub struct Station {
-    place: String,
-    country: String,
-}
-
 impl FromStr for Station {
     type Err = String;
 
@@ -158,14 +194,6 @@ impl TryFrom<&str> for Station {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
-pub struct WindInfo {
-    pub cardinal: String,
-    pub azimuth: String,
-    pub mph: String,
-    pub knots: String,
-}
-
 impl Default for WindInfo {
     fn default() -> Self {
         WindInfo {
@@ -190,7 +218,7 @@ fn parse_pressure(input: &str) -> IResult<&str, i16> {
     Ok((i, pressure))
 }
 
-pub fn parse_windinfo(i: &str) -> IResult<&str, WindInfo> {
+fn parse_windinfo(i: &str) -> IResult<&str, WindInfo> {
     fn calm_parser(i: &str) -> IResult<&str, WindInfo> {
         let (i, _) = many1(tag("Wind: Calm:0"))(i)?;
         Ok((i, WindInfo::default()))
@@ -231,7 +259,7 @@ pub fn parse_windinfo(i: &str) -> IResult<&str, WindInfo> {
     alt((calm_parser, wind_from_parser, wind_var_parser))(i)
 }
 
-pub fn parse_station(i: &str) -> IResult<&str, Option<Station>> {
+fn parse_station(i: &str) -> IResult<&str, Option<Station>> {
     let result = alt((
         tag_no_case("Station name not available"),
         take_till(|c| c == '\n'),
@@ -261,15 +289,7 @@ fn parse_temperature(i: &str) -> IResult<&str, Temperature> {
     Ok((i, temperature))
 }
 
-#[derive(PartialEq, Debug)]
-pub struct WeatherTime {
-    pub year: u16,
-    pub month: u8,
-    pub day: u8,
-    pub time: String,
-}
-
-pub fn parse_time(i: &str) -> IResult<&str, WeatherTime> {
+fn parse_time(i: &str) -> IResult<&str, WeatherTime> {
     // Parsers a sample string like this
     // Mar 28, 2021 - 04:00 AM EDT / 2021.03.28 0800 UTC
     let (i, _) = take_till(|c| c == '/')(i)?;
@@ -394,8 +414,11 @@ mod tests {
     fn retrieve_test_weather() {
         use tokio::runtime::Runtime;
         let rt = Runtime::new().unwrap();
-        let future = rt.block_on(async { get_weather("ZSQD".into()).await });
-        assert!(future.is_err());
+        let future = rt.block_on(async { get_weather("VOBL".into()).await });
+        assert!(future.is_ok());
+
+        let future2 = rt.block_on(async { get_weather("non_existent".into()).await });
+        assert!(future2.is_err());
     }
 
     #[test]
@@ -534,28 +557,3 @@ extra";
         assert_eq!(parse_weather(weather2), Ok(("\nextra", winfo2)))
     }
 }
-
-// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/VOBL.TXT
-// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/VOBL.xml
-// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/VOBL.json
-
-// With station names
-// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/ZSSS.TXT
-// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/ZSQD.TXT
-// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/ZSPD.TXT
-// https://tgftp.nws.noaa.gov/data/observations/metar/decoded/YMML.TXT (aus)
-
-// Qingdao, China (ZSQD) 36-04N 120-20E 77M
-// Mar 28, 2021 - 04:00 AM EDT / 2021.03.28 0800 UTC
-// Wind: from the NNW (340 degrees) at 16 MPH (14 KT):0
-// Visibility: 1 mile(s):0
-// Sky conditions: overcast
-// Weather: widespread dust
-// Temperature: 64 F (18 C)
-// Dew Point: 42 F (6 C)
-// Relative Humidity: 45%
-// Pressure (altimeter): 29.65 in. Hg (1004 hPa)
-// ob: ZSQD 280800Z 34007MPS 2000 DU OVC020 18/06 Q1004 BECMG TL0930 3000
-// cycle: 8
-
-// Reimplementatin of https://github.com/jaor/xmobar/blob/master/src/Xmobar/Plugins/Monitors/Weather.hs
