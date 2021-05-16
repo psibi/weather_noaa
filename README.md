@@ -1,5 +1,7 @@
 # weathernoaa
 
+[![CI](https://github.com/psibi/weather_noaa/actions/workflows/ci.yml/badge.svg)](https://github.com/psibi/weather_noaa/actions)
+
 API wrapper over NOAA's observatory data to find weather
 information. For finding the weather information, you need to know the
 name of the station code which can be obtained from
