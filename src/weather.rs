@@ -404,7 +404,7 @@ mod tests {
 
         assert_eq!(
             parse_weather_str("non_existent"),
-            Ok(("", None))
+            Ok(("non_existent", None))
         );
     }
 
