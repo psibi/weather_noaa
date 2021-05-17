@@ -281,8 +281,8 @@ fn parse_temperature(i: &str) -> IResult<&str, Temperature> {
     let (i, celsius) = map_res(take_till(char::is_whitespace), |s: &str| s.parse())(i)?;
     let (i, _) = take_till(|c| c == '\n')(i)?;
     let temperature = Temperature {
-        fahrenheit,
         celsius,
+        fahrenheit,
     };
     Ok((i, temperature))
 }
@@ -397,15 +397,12 @@ mod tests {
             Ok(("", Some("light drizzle; partial fog".into())))
         );
 
-        // assert_eq!(
-        //     parse_weather_str(""),
-        //     Ok(("", None))
-        // );
+        assert_eq!(parse_weather_str(""), Ok(("", None)));
 
-        // assert_eq!(
-        //     parse_weather_str("non_existent"),
-        //     Ok(("", None))
-        // );
+        assert_eq!(
+            parse_weather_str("non_existent"),
+            Ok(("non_existent", None))
+        );
     }
 
     #[test]
