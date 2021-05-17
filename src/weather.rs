@@ -281,8 +281,8 @@ fn parse_temperature(i: &str) -> IResult<&str, Temperature> {
     let (i, celsius) = map_res(take_till(char::is_whitespace), |s: &str| s.parse())(i)?;
     let (i, _) = take_till(|c| c == '\n')(i)?;
     let temperature = Temperature {
-        fahrenheit,
         celsius,
+        fahrenheit,
     };
     Ok((i, temperature))
 }
