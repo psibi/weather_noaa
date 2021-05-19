@@ -119,6 +119,17 @@ pub async fn get_weather(station_code: String) -> Result<WeatherInfo, WeatherErr
     Ok(result)
 }
 
+/// Same function as `get_weather` but a blocking version.
+pub fn get_blocking_weather(station_code: String) -> Result<WeatherInfo, WeatherError> {
+    let noaa_url = format!(
+        "https://tgftp.nws.noaa.gov/data/observations/metar/decoded/{}.TXT",
+        station_code
+    );
+    let body = reqwest::blocking::get(noaa_url)?.text()?;
+    let (_, result) = parse_weather(&body)?;
+    Ok(result)
+}
+
 // Implementation taken and adapted from
 // https://github.com/jaor/xmobar/blob/master/src/Xmobar/Plugins/Monitors/Weather.hs
 
@@ -414,6 +425,15 @@ mod tests {
 
         let future2 = rt.block_on(async { get_weather("non_existent".into()).await });
         assert!(future2.is_err());
+    }
+
+    #[test]
+    fn retrieve_test_blocking_weather() {
+        let result = get_blocking_weather("VOBL".into());
+        assert!(result.is_ok());
+
+        let result2 = get_blocking_weather("non_existent".into());
+        assert!(result2.is_err());
     }
 
     #[test]
