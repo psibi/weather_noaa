@@ -188,7 +188,7 @@ impl TryFrom<&str> for Station {
         match i.split(',').collect::<Vec<&str>>()[..] {
             [ref s1, ref s2] => {
                 let mut country = s2.to_string();
-                if let [ref c, ..] = country.split('(').collect::<Vec<&str>>()[..] {
+                if let [c, ..] = country.split('(').collect::<Vec<&str>>()[..] {
                     country = c.trim().to_string();
                 }
                 Ok(Station {
