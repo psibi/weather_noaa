@@ -1,19 +1,14 @@
-[package]
-name = "weathernoaa"
-version = "0.2.0"
-authors = ["Sibi Prabakaran <sibi@psibi.in>"]
-readme = "README.md"
-repository = "https://github.com/psibi/weather_noaa"
-license = "MIT"
-keywords = ["Weather", "NOAA"]
-edition = "2018"
-description = "API wrapper over NOAA's observatory data to find weather information"
+[workspace]
+resolver = "2"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+members = [
+    "weathernoaa",
+    "noaa",
+]
 
-[dependencies]
-reqwest = { version = "0.11", features = ["blocking"] }
-tokio = { version = "1", features = ["full"] }
-nom = "6.1.2"
-thiserror = "1.0.24"
-anyhow = "1.0.40"
+[profile.release]
+panic = 'abort'
+strip = "symbols"
+opt-level = 'z'
+lto = true
+codegen-units = 1

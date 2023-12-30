@@ -1,0 +1,16 @@
+[package]
+name = "noaa"
+version = "0.1.0"
+authors = ["Sibi Prabakaran <sibi@psibi.in>"]
+readme = "README.md"
+repository = "https://github.com/psibi/weather_noaa"
+license = "MIT"
+keywords = ["Weather", "NOAA"]
+edition = "2018"
+description = "CLI tool for interacting with NOAA station data"
+
+[dependencies]
+weathernoaa = { path = "../weathernoaa" }
+tokio = { version = "1.4.0", features = ["macros"] }
+anyhow = "1.0.77"
+clap = { version = "4.4.12", features = ["derive"]}

@@ -5,7 +5,7 @@
 API wrapper over NOAA's observatory data to find weather
 information. For finding the weather information, you need to know the
 name of the station code which can be obtained from
-[here](https://www.ncdc.noaa.gov/data-access/land-based-station-data/station-metadata).
+[here](https://www.weather.gov/arh/stationlist).
 
 ## Usage
 
@@ -16,7 +16,7 @@ use weathernoaa::weather::*;
 #[tokio::main]
 async fn main() -> Result<()> {
     let result = get_weather("VOBL".into()).await?;
-    println!("{:?}", result);
+    println!("{:#?}", result);
     Ok(())
 }
 ```

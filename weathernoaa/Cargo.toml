@@ -1,0 +1,21 @@
+[package]
+name = "weathernoaa"
+version = "0.2.0"
+authors = ["Sibi Prabakaran <sibi@psibi.in>"]
+readme = "README.md"
+repository = "https://github.com/psibi/weather_noaa"
+license = "MIT"
+keywords = ["Weather", "NOAA"]
+edition = "2018"
+description = "API wrapper over NOAA's observatory data to find weather information"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+reqwest = { version = "0.11.23", default-features = false, features = ["blocking", "rustls-tls"] }
+nom = "7.1.3"
+thiserror = "1.0.52"
+anyhow = "1.0.77"
+
+[dev-dependencies]
+tokio = { version = "1.4.0" }
