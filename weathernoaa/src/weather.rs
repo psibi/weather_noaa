@@ -7,6 +7,7 @@ use nom::error::*;
 use nom::multi::{many0, many1};
 use nom::IResult;
 use nom::{branch::alt, combinator::map_res};
+use reqwest::Client;
 use std::char;
 use std::{convert::TryFrom, str::FromStr};
 use thiserror::Error;
@@ -107,30 +108,54 @@ fn parse_weather_str(i: &str) -> IResult<&str, Option<String>> {
     Ok((i, Some(weather.into())))
 }
 
-/// This function retrieves the weather information from from the NOAA
-/// observations.
-pub async fn get_weather(station_code: String) -> Result<WeatherInfo, WeatherError> {
-    let noaa_url = format!(
-        "https://tgftp.nws.noaa.gov/data/observations/metar/decoded/{}.TXT",
-        station_code
-    );
-    let res = reqwest::get(noaa_url).await?.error_for_status()?;
-    let body = res.text().await?;
-    let (_, result) = parse_weather(&body)?;
-    Ok(result)
+pub struct NoaaApp {
+    client: Client,
+    blocking_client: reqwest::blocking::Client,
 }
 
-/// Same function as `get_weather` but a blocking version.
-pub fn get_blocking_weather(station_code: String) -> Result<WeatherInfo, WeatherError> {
-    let noaa_url = format!(
-        "https://tgftp.nws.noaa.gov/data/observations/metar/decoded/{}.TXT",
-        station_code
-    );
-    let body = reqwest::blocking::get(noaa_url)?
-        .error_for_status()?
-        .text()?;
-    let (_, result) = parse_weather(&body)?;
-    Ok(result)
+impl NoaaApp {
+    pub fn new() -> Self {
+        NoaaApp {
+            client: Client::new(),
+            blocking_client: reqwest::blocking::Client::new(),
+        }
+    }
+
+    pub fn with_client(client: Client) -> Self {
+        NoaaApp {
+            client,
+            blocking_client: reqwest::blocking::Client::new(),
+        }
+    }
+
+    /// This function retrieves the weather information from from the NOAA
+    /// observations.
+    pub async fn get_weather(&self, station_code: &str) -> Result<WeatherInfo, WeatherError> {
+        let noaa_url = format!(
+            "https://tgftp.nws.noaa.gov/data/observations/metar/decoded/{}.TXT",
+            station_code
+        );
+        let res = self.client.get(noaa_url).send().await?.error_for_status()?;
+        let body = res.text().await?;
+        let (_, result) = parse_weather(&body)?;
+        Ok(result)
+    }
+
+    /// Same function as `get_weather` but a blocking version.
+    pub fn get_blocking_weather(&self, station_code: &str) -> Result<WeatherInfo, WeatherError> {
+        let noaa_url = format!(
+            "https://tgftp.nws.noaa.gov/data/observations/metar/decoded/{}.TXT",
+            station_code
+        );
+        let body = self
+            .blocking_client
+            .get(noaa_url)
+            .send()?
+            .error_for_status()?
+            .text()?;
+        let (_, result) = parse_weather(&body)?;
+        Ok(result)
+    }
 }
 
 // Implementation taken and adapted from
@@ -438,19 +463,21 @@ mod tests {
     fn retrieve_test_weather() {
         use tokio::runtime::Runtime;
         let rt = Runtime::new().unwrap();
-        let future = rt.block_on(async { get_weather("VOBL".into()).await });
+	let app = NoaaApp::new();
+        let future = rt.block_on(async { app.get_weather("VOBL".into()).await });
         assert!(future.is_ok());
 
-        let future2 = rt.block_on(async { get_weather("non_existent".into()).await });
+        let future2 = rt.block_on(async { app.get_weather("non_existent".into()).await });
         assert!(future2.is_err());
     }
 
     #[test]
     fn retrieve_test_blocking_weather() {
-        let result = get_blocking_weather("VOBL".into());
+	let app = NoaaApp::new();
+        let result = app.get_blocking_weather("VOBL".into());
         assert!(result.is_ok());
 
-        let result2 = get_blocking_weather("non_existent".into());
+        let result2 = app.get_blocking_weather("non_existent".into());
         assert!(result2.is_err());
     }
 

@@ -3,6 +3,7 @@
 - Type of `WeatherInfo` is changed to make it move away from `String`
   based result.
 - Fix issues while parsing weather data for VOGO and KYKM stations.
+- Ability to reuse the async reqwest client.
 
 # v0.2.0
 
