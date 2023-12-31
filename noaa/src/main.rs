@@ -8,7 +8,6 @@ use weathernoaa::weather::*;
 async fn main() -> Result<()> {
     let cmd = cli::init();
     let app = NoaaApp::new();
-
     match cmd.sub {
         SubCommand::Info { station_id } => {
             let result = app.get_weather(&station_id).await?;

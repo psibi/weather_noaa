@@ -42,6 +42,8 @@ jobs:
     - name: Build
       run: just compile
     - name: Run tests
-      run: just test
+      run: |
+        just test
+        just run
     - name: Lint
       run: just lint
