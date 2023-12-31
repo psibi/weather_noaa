@@ -2,6 +2,7 @@ use nom::bytes::complete::tag;
 use nom::bytes::complete::{tag_no_case, take_till};
 use nom::character::complete::space1;
 use nom::character::complete::{char, newline};
+use nom::combinator::opt;
 use nom::error::*;
 use nom::multi::{many0, many1};
 use nom::IResult;
@@ -22,15 +23,15 @@ pub struct WeatherInfo {
     /// Visibility Details. Eg: 1 mile(s):0
     pub visibility: String,
     /// Sky condition. Eg: overcast, partly cloudy etc.
-    pub sky_condition: String,
-    /// Weather information. Eg: widespread dust
+    pub sky_condition: Option<String>,
+    /// Weather information. Eg: widespread dust, mist
     pub weather: Option<String>,
     /// Temperature
     pub temperature: Temperature,
     /// Dewpoint Temperature. More details [here](https://en.wikipedia.org/wiki/Dew_point)
     pub dewpoint: Temperature,
     /// Relative Humidity. More details [here](https://en.wikipedia.org/wiki/Humidity#Relative_humidity)
-    pub relative_humidity: String,
+    pub relative_humidity: f64,
     /// Pressure in Hectopascal Pressure Unit
     pub pressure: i16,
 }
@@ -57,9 +58,9 @@ pub enum WeatherError {
 #[derive(PartialEq, Debug)]
 pub struct Temperature {
     /// Temperature in celsius
-    pub celsius: i16,
+    pub celsius: f64,
     /// Temperature in Fahrenheit
-    pub fahrenheit: i16,
+    pub fahrenheit: f64,
 }
 
 /// Weather station information
@@ -77,11 +78,11 @@ pub struct WindInfo {
     /// Cardinal direction. More details [here](https://en.wikipedia.org/wiki/Cardinal_direction)
     pub cardinal: String,
     /// Azimuth. More details [here](https://en.wikipedia.org/wiki/Azimuth#Navigation)
-    pub azimuth: String,
+    pub azimuth: f64,
     /// Wind speed in Miles per hour
-    pub mph: String,
+    pub mph: f64,
     /// Speed in knots. More details [here](https://en.wikipedia.org/wiki/Knot_(unit))
-    pub knots: String,
+    pub knots: f64,
 }
 
 impl From<reqwest::Error> for WeatherError {
@@ -113,7 +114,7 @@ pub async fn get_weather(station_code: String) -> Result<WeatherInfo, WeatherErr
         "https://tgftp.nws.noaa.gov/data/observations/metar/decoded/{}.TXT",
         station_code
     );
-    let res = reqwest::get(noaa_url).await?;
+    let res = reqwest::get(noaa_url).await?.error_for_status()?;
     let body = res.text().await?;
     let (_, result) = parse_weather(&body)?;
     Ok(result)
@@ -125,7 +126,9 @@ pub fn get_blocking_weather(station_code: String) -> Result<WeatherInfo, Weather
         "https://tgftp.nws.noaa.gov/data/observations/metar/decoded/{}.TXT",
         station_code
     );
-    let body = reqwest::blocking::get(noaa_url)?.text()?;
+    let body = reqwest::blocking::get(noaa_url)?
+        .error_for_status()?
+        .text()?;
     let (_, result) = parse_weather(&body)?;
     Ok(result)
 }
@@ -133,7 +136,7 @@ pub fn get_blocking_weather(station_code: String) -> Result<WeatherInfo, Weather
 // Implementation taken and adapted from
 // https://github.com/jaor/xmobar/blob/master/src/Xmobar/Plugins/Monitors/Weather.hs
 
-/// Nom parser for parsing `WeatherInfo` from raw data.
+/// Nom parser for parsing [WeatherInfo] from raw data.
 pub fn parse_weather(i: &str) -> IResult<&str, WeatherInfo> {
     let (i, station) = parse_station(i)?;
     let (i, _) = newline(i)?;
@@ -144,9 +147,7 @@ pub fn parse_weather(i: &str) -> IResult<&str, WeatherInfo> {
     let (i, _) = tag("Visibility: ")(i)?;
     let (i, visibility) = take_till(|c| c == '\n')(i)?;
     let (i, _) = newline(i)?;
-    let (i, _) = tag("Sky conditions: ")(i)?;
-    let (i, sky_condition) = take_till(|c| c == '\n')(i)?;
-    let (i, _) = newline(i)?;
+    let (i, sky_condition) = parse_sky_condition(i)?;
     let (i, weather) = parse_weather_str(i)?;
     let (i, _) = tag("Temperature:")(i)?;
     let (i, temperature) = parse_temperature(i)?;
@@ -154,20 +155,18 @@ pub fn parse_weather(i: &str) -> IResult<&str, WeatherInfo> {
     let (i, _) = tag("Dew Point:")(i)?;
     let (i, dewpoint) = parse_temperature(i)?;
     let (i, _) = newline(i)?;
-    let (i, _) = tag("Relative Humidity: ")(i)?;
-    let (i, humidity) = take_till(|c| c == '\n')(i)?;
-    let (i, _) = newline(i)?;
+    let (i, relative_humidity) = parse_relative_humidity(i)?;
     let (i, pressure) = parse_pressure(i)?;
     let winfo = WeatherInfo {
         station,
         weather_time,
         wind,
         visibility: visibility.into(),
-        sky_condition: sky_condition.into(),
+        sky_condition,
         weather,
         temperature,
         dewpoint,
-        relative_humidity: humidity.into(),
+        relative_humidity,
         pressure,
     };
     Ok((i, winfo))
@@ -205,9 +204,9 @@ impl Default for WindInfo {
     fn default() -> Self {
         WindInfo {
             cardinal: "μ".into(),
-            azimuth: "μ".into(),
-            mph: "0".into(),
-            knots: "0".into(),
+            azimuth: 0.0,
+            mph: 0.0,
+            knots: 0.0,
         }
     }
 }
@@ -236,36 +235,55 @@ fn parse_windinfo(i: &str) -> IResult<&str, WindInfo> {
         let (i, cardinal) = take_till(char::is_whitespace)(i)?;
         let (i, _) = spaces(i)?;
         let (i, _) = char('(')(i)?;
-        let (i, azimuth) = take_till(char::is_whitespace)(i)?;
+        let (i, azimuth) = map_res(take_till(char::is_whitespace), |s: &str| s.parse())(i)?;
         let (i, _) = tag(" degrees) at ")(i)?;
-        let (i, mph) = take_till(char::is_whitespace)(i)?;
+        let (i, mph) = map_res(take_till(char::is_whitespace), |s: &str| s.parse())(i)?;
         let (i, _) = tag(" MPH (")(i)?;
-        let (i, knots) = take_till(char::is_whitespace)(i)?;
+        let (i, knots) = map_res(take_till(char::is_whitespace), |s: &str| s.parse())(i)?;
         let (i, _) = take_till(|c| c == '\n')(i)?;
         let wind_info = WindInfo {
             cardinal: cardinal.into(),
-            azimuth: azimuth.into(),
-            mph: mph.into(),
-            knots: knots.into(),
+            azimuth,
+            mph,
+            knots,
         };
         Ok((i, wind_info))
     }
 
     fn wind_var_parser(i: &str) -> IResult<&str, WindInfo> {
         let (i, _) = tag("Wind: Variable at ")(i)?;
-        let (i, mph) = take_till(char::is_whitespace)(i)?;
+        let (i, mph) = map_res(take_till(char::is_whitespace), |s: &str| s.parse())(i)?;
         let (i, _) = tag(" MPH (")(i)?;
-        let (i, knots) = take_till(char::is_whitespace)(i)?;
+        let (i, knots) = map_res(take_till(char::is_whitespace), |s: &str| s.parse())(i)?;
         let (i, _) = take_till(|c| c == '\n')(i)?;
         let wind_info = WindInfo {
-            knots: knots.into(),
-            mph: mph.into(),
+            knots,
+            mph,
             ..WindInfo::default()
         };
         Ok((i, wind_info))
     }
 
     alt((calm_parser, wind_from_parser, wind_var_parser))(i)
+}
+
+fn parse_sky_condition(i: &str) -> IResult<&str, Option<String>> {
+    let (i, sky_tag) = opt(tag("Sky conditions: "))(i)?;
+    if sky_tag.is_some() {
+        let (i, sky_condition) = take_till(|c| c == '\n')(i)?;
+        let (i, _) = newline(i)?;
+        Ok((i, Some(sky_condition.to_owned())))
+    } else {
+        Ok((i, None))
+    }
+}
+
+fn parse_relative_humidity(i: &str) -> IResult<&str, f64> {
+    let (i, _) = tag("Relative Humidity: ")(i)?;
+    let (i, humidity) = map_res(take_till(|c| c == '%'), |s: &str| s.parse())(i)?;
+    let (i, _) = char('%')(i)?;
+    let (i, _) = newline(i)?;
+    Ok((i, humidity))
 }
 
 fn parse_station(i: &str) -> IResult<&str, Option<Station>> {
@@ -357,18 +375,18 @@ mod tests {
     fn test_wind_info() {
         let winfo = WindInfo {
             cardinal: "μ".into(),
-            azimuth: "μ".into(),
-            mph: "0".into(),
-            knots: "0".into(),
+            azimuth: 0.0,
+            mph: 0.0,
+            knots: 0.0,
         };
         assert_eq!(parse_windinfo("Wind: Calm:0"), Ok(("", winfo.clone())));
         assert!(parse_windinfo("Wind: unexpected").is_err());
 
         let china_info = WindInfo {
             cardinal: "NNW".into(),
-            azimuth: "340".into(),
-            mph: "16".into(),
-            knots: "14".into(),
+            azimuth: 340.0,
+            mph: 16.0,
+            knots: 14.0,
         };
 
         assert_eq!(
@@ -380,14 +398,14 @@ mod tests {
     #[test]
     fn test_temperature() {
         let temp = Temperature {
-            fahrenheit: 78,
-            celsius: 26,
+            fahrenheit: 78.0,
+            celsius: 26.0,
         };
         assert_eq!(parse_temperature(" 78 F (26 C)"), Ok(("", temp)));
 
         let temp = Temperature {
-            fahrenheit: 66,
-            celsius: 19,
+            fahrenheit: 66.0,
+            celsius: 19.0,
         };
 
         assert_eq!(parse_temperature(" 66 F (19 C)"), Ok(("", temp)));
@@ -437,6 +455,38 @@ mod tests {
     }
 
     #[test]
+    fn test_kykm_weather() {
+        let weather = r#"YAKIMA AIR TERMINAL, WA, United States (KYKM) 46-34N 120-32W 324M
+Dec 30, 2023 - 10:53 PM EST / 2023.12.31 0353 UTC
+Wind: Calm:0
+Visibility: 5 mile(s):0
+Sky conditions: overcast
+Weather: mist
+Temperature: 42.1 F (5.6 C)
+Dew Point: 39.0 F (3.9 C)
+Relative Humidity: 88%
+Pressure (altimeter): 30.05 in. Hg (1017 hPa)
+ob: KYKM 310353Z AUTO 00000KT 5SM BR OVC025 06/04 A3005 RMK AO2 SLP185 T00560039
+cycle: 4"#;
+        parse_weather(weather).unwrap();
+    }
+
+    #[test]
+    fn test_vogo_weather() {
+        let weather = r#"Station name not available
+Dec 30, 2023 - 07:30 AM EST / 2023.12.30 1230 UTC
+Wind: from the NNW (340 degrees) at 7 MPH (6 KT):0
+Visibility: 3 mile(s):0
+Temperature: 84 F (29 C)
+Dew Point: 71 F (22 C)
+Relative Humidity: 65%
+Pressure (altimeter): 29.83 in. Hg (1010 hPa)
+ob: VOGO 301230Z 34006KT 6000 NSC 29/22 Q1010 NOSIG
+cycle: 12"#;
+        parse_weather(weather).unwrap();
+    }
+
+    #[test]
     fn test_vobl_weather() {
         let weather = "Station name not available
 May 16, 2021 - 06:30 AM EDT / 2021.05.16 1030 UTC
@@ -458,22 +508,22 @@ extra";
             },
             wind: WindInfo {
                 cardinal: "SSW".into(),
-                azimuth: "200".into(),
-                mph: "12".into(),
-                knots: "10".into(),
+                azimuth: 200.0,
+                mph: 12.0,
+                knots: 10.0,
             },
             visibility: "4 mile(s):0".into(),
-            sky_condition: "partly cloudy".into(),
+            sky_condition: Some("partly cloudy".to_owned()),
             weather: None,
             temperature: Temperature {
-                fahrenheit: 80,
-                celsius: 27,
+                fahrenheit: 80.0,
+                celsius: 27.0,
             },
             dewpoint: Temperature {
-                fahrenheit: 66,
-                celsius: 19,
+                fahrenheit: 66.0,
+                celsius: 19.0,
             },
-            relative_humidity: "61%".into(),
+            relative_humidity: 61.0,
             pressure: 1009,
         };
 
@@ -505,22 +555,22 @@ Pressure (altimeter): 29.65 in. Hg (1004 hPa)";
             },
             wind: WindInfo {
                 cardinal: "NNW".into(),
-                azimuth: "340".into(),
-                mph: "16".into(),
-                knots: "14".into(),
+                azimuth: 340.0,
+                mph: 16.0,
+                knots: 14.0,
             },
             visibility: "1 mile(s):0".into(),
-            sky_condition: "overcast".into(),
+            sky_condition: Some("overcast".to_owned()),
             weather: Some("widespread dust".into()),
             temperature: Temperature {
-                fahrenheit: 64,
-                celsius: 18,
+                fahrenheit: 64.0,
+                celsius: 18.0,
             },
             dewpoint: Temperature {
-                fahrenheit: 42,
-                celsius: 6,
+                fahrenheit: 42.0,
+                celsius: 6.0,
             },
-            relative_humidity: "45%".into(),
+            relative_humidity: 45.0,
             pressure: 1004,
         };
 
@@ -550,22 +600,22 @@ extra";
             },
             wind: WindInfo {
                 cardinal: "NNW".into(),
-                azimuth: "340".into(),
-                mph: "16".into(),
-                knots: "14".into(),
+                azimuth: 340.0,
+                mph: 16.0,
+                knots: 14.0,
             },
             visibility: "1 mile(s):0".into(),
-            sky_condition: "overcast".into(),
+            sky_condition: Some("overcast".to_owned()),
             weather: Some("widespread dust".into()),
             temperature: Temperature {
-                fahrenheit: 64,
-                celsius: 18,
+                fahrenheit: 64.0,
+                celsius: 18.0,
             },
             dewpoint: Temperature {
-                fahrenheit: 42,
-                celsius: 6,
+                fahrenheit: 42.0,
+                celsius: 6.0,
             },
-            relative_humidity: "45%".into(),
+            relative_humidity: 45.0,
             pressure: 1004,
         };
 

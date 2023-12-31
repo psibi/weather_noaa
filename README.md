@@ -8,6 +8,8 @@ name of the station code which can be obtained from [here](https://www.weather.g
 general, figuring out station IDs is harder. These are the various
 resources I usually use (if you find any source, please send a PR):
 
+- [Archive.org's NOAA reference list showing identification numbers and information for each station in the Federal Climate Complex ISD](https://web.archive.org/web/20170119213347/ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-history.txt)
+- [Station list](https://www.ncei.noaa.gov/pub/data/noaa/isd-history.txt)
 - [METAR Observation Station Identifiers](https://www.cnrfc.noaa.gov/metar.php)
 - [India METAR Station ID](https://amssdelhi.gov.in/Palam1.php)
 

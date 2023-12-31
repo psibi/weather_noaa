@@ -1052,7 +1052,7 @@ checksum = "b7148f4696fb4960a346eaa60bbfb42a1ac4ebba21f750f75fc1375b098d5ffa"
 
 [[package]]
 name = "weathernoaa"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "nom",
